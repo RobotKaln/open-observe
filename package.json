@@ -1,0 +1,9 @@
+{
+  "name": "open-observe-monorepo",
+  "private": true,
+  "description": "Self-hosted app observability for Expo apps on Cloudflare (client, Worker, dashboard).",
+  "license": "MIT",
+  "scripts": {
+    "test:all": "npm --prefix packages/expo test && npm --prefix worker test && npm --prefix dashboard test"
+  }
+}

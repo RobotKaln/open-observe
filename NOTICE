@@ -1,0 +1,10 @@
+open-observe
+============
+
+Parts of packages/expo are a modified copy of the JavaScript sources of the npm package `expo-observe` 58.0.18.
+
+  Origin:    https://github.com/expo/expo/tree/main/packages/expo-observe
+  Copyright: (c) 2015-present 650 Industries, Inc. (aka Expo)
+  License:   MIT (full text in packages/expo/NOTICE)
+
+open-observe is not affiliated with or endorsed by Expo. Expo and Expo Observe are trademarks of 650 Industries, Inc.

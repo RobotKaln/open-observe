@@ -1,0 +1,76 @@
+{
+  "name": "@open-observe/expo",
+  "version": "0.1.0",
+  "description": "Drop-in replacement for the JavaScript part of expo-observe 58.0.18, with a real web collector (Web Vitals, errors) for a self-hosted open-observe Worker.",
+  "keywords": [
+    "expo",
+    "expo-observe",
+    "observability",
+    "observe",
+    "open-observe",
+    "opentelemetry",
+    "web-vitals",
+    "react-native"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "browser": "./src/index.web.ts",
+      "default": "./src/index.ts"
+    },
+    "./integrations/react-navigation": {
+      "types": "./src/integrations/react-navigation/index.ts",
+      "default": "./src/integrations/react-navigation/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "NOTICE",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-timeout=60000 test/*.test.mjs",
+    "typecheck": "tsc --noEmit -p test/tsconfig.compat.json"
+  },
+  "peerDependencies": {
+    "@react-navigation/native": "^7.0.0",
+    "expo": "*",
+    "expo-app-metrics": "*",
+    "expo-constants": "*",
+    "expo-observe": "~58.0.18",
+    "expo-router": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-reanimated": ">=4.7.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-navigation/native": {
+      "optional": true
+    },
+    "expo-router": {
+      "optional": true
+    },
+    "react-native-reanimated": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@react-navigation/native": "^7.1.33",
+    "@types/react": "~19.3.0",
+    "expo": "~58.0.23",
+    "expo-app-metrics": "~58.0.15",
+    "expo-constants": "~58.0.15",
+    "expo-observe": "58.0.18",
+    "expo-router": "~58.0.30",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "typescript": "~6.0.3"
+  }
+}

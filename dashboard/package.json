@@ -1,0 +1,23 @@
+{
+  "name": "@open-observe/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static web dashboard for open-observe (Preact, built with esbuild)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "mock": "node scripts/mock-server.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "preact": "10.26.9"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "esbuild": "0.25.5",
+    "typescript": "~5.9.3"
+  }
+}

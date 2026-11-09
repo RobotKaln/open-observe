@@ -1,0 +1,20 @@
+{
+  // Type contract of the drop-in claim. Everything it needs (expo-observe, expo, react, ...) comes from the devDependencies of
+  // this package: run `npm install` in packages/expo first. Run it with `npm run typecheck`.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "customConditions": ["react-native"],
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": ["compat.check.ts", "globals.d.ts"]
+}

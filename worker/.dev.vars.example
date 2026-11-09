@@ -1,0 +1,4 @@
+# Copy to .dev.vars for `wrangler dev` (never commit .dev.vars).
+ADMIN_TOKEN=change-me-to-at-least-32-random-characters
+PEPPER=change-me-to-at-least-16-random-characters
+PROJECT_IDS=00000000-0000-4000-8000-000000000000

@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "open-observe",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    // The dashboard build: run `npm run build` in ../dashboard first.
+    "directory": "../dashboard/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // The Worker answers these before the static dashboard: the SPA fallback would otherwise answer them with index.html.
+    "run_worker_first": ["/api/*", "/observe/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "open-observe",
+      // Create it with `wrangler d1 create open-observe` (add `--jurisdiction eu` to keep the data in the EU), paste the
+      // id it prints here, then `npm run db:migrate`. Local runs and the tests use a local database and ignore the id.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Hourly: deletes raw rows older than RETENTION_DAYS and old rate limit counters.
+  "triggers": { "crons": ["23 * * * *"] },
+  "observability": { "enabled": true },
+  "vars": {
+    // Comma-separated Expo project ids (UUIDs) the ingest accepts; a request for any other id is a 404.
+    // Required: set your own id(s), the id in the Expo config (`extra.eas.projectId`). While it is empty every ingest request is a 404.
+    "PROJECT_IDS": "",
+    // "1" = after storing, forward the original OTLP batch to Expo Observe (https://o.expo.dev/<projectId>/v1/...).
+    "FORWARD_TO_EXPO": "0",
+    // Days raw rows are kept (1..365).
+    "RETENTION_DAYS": "30",
+    // Comma-separated origins that may POST to the ingest from a browser on another origin, for example
+    // "https://app.example.com". Empty = same origin only. The read API never sends CORS headers.
+    "ALLOWED_ORIGINS": ""
+  }
+  // Secrets (never put them here): `wrangler secret put ADMIN_TOKEN` (at least 32 random characters, the dashboard login
+  // and the bearer token of /api/*) and `wrangler secret put PEPPER` (at least 16 random characters, HMAC key of client ids,
+  // session ids and rate limit keys; do not change it casually: unique installs restart from zero).
+}
