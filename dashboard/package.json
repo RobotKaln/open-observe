@@ -13,7 +13,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "preact": "10.26.9"
+    "preact": "10.29.8"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

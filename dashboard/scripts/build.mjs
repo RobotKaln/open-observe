@@ -29,13 +29,15 @@ await mkdir(dist, { recursive: true });
 const copyStatic = async () => {
   await copyFile(join(root, 'src/index.html'), join(dist, 'index.html'));
   await copyFile(join(root, 'src/style.css'), join(dist, 'app.css'));
+  await copyFile(join(root, 'src/theme.js'), join(dist, 'theme.js'));
+  await copyFile(join(root, 'src/_headers'), join(dist, '_headers'));
 };
 await copyStatic();
 
 if (watch) {
   const ctx = await context(options);
   await ctx.watch();
-  for (const file of ['index.html', 'style.css']) watchFile(join(root, 'src', file), () => copyStatic().catch(console.error));
+  for (const file of ['index.html', 'style.css', 'theme.js', '_headers']) watchFile(join(root, 'src', file), () => copyStatic().catch(console.error));
   console.log('Watching src/ (rebuilds on every change).');
 } else {
   await build(options);

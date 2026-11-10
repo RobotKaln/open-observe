@@ -1,0 +1,11 @@
+# Security headers of the dashboard (served by the Worker's static assets). The admin token lives in sessionStorage, so the page
+# runs no inline script and loads nothing from another origin. The read API (/api) and the ingest (/observe) are answered by
+# the Worker itself and set their own headers.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control: no-store
