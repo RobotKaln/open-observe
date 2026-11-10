@@ -9,7 +9,7 @@ import { allowedOrigins, forwardEnabled, isProject, pepperUsable } from '../lib/
 import { sha256Hex } from '../lib/crypto';
 import { withFingerprints } from '../lib/fingerprint';
 import { parseLogs, parseMetrics, parseSpans } from '../lib/otlp';
-import { countRequest, RATE_LIMIT_PER_WINDOW, RATE_WINDOW_MS, storeBatch } from '../lib/store';
+import { countRequest, RATE_LIMIT_PER_WINDOW, RATE_WINDOW_MS, reserveBytes, storeBatch } from '../lib/store';
 import type { ParsedBatch } from '../lib/types';
 import { InvalidWebBatch, parseWeb } from '../lib/web';
 
@@ -54,7 +54,8 @@ async function readLimited(req: Request): Promise<Uint8Array | null> {
 }
 
 // Shared checks, in order: project id (404), configuration (503), request rate per client address (429), JSON content
-// type (415), size (413). Returns the body, or the response that refuses it.
+// type (415), size (413), daily bytes per client address and per project (429, nothing stored). Returns the body, or the
+// response that refuses it.
 async function intake(req: Request, env: Env, projectId: string, now: number): Promise<Uint8Array | Response> {
   if (!isProject(env, projectId)) return json({ error: 'not_found' }, 404);
   // Without a usable PEPPER nothing could be stored (or hashed for the rate limit): say so instead of dropping data quietly.
@@ -77,7 +78,16 @@ async function intake(req: Request, env: Env, projectId: string, now: number): P
     return json({ error: 'unsupported_media_type' }, 415);
   }
   const body = await readLimited(req);
-  return body ?? json({ error: 'too_large' }, 413);
+  if (!body) return json({ error: 'too_large' }, 413);
+  // The bytes only feed a counter keyed by an HMAC of the address and the day, which is never stored or logged either.
+  try {
+    const address = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const retryAfter = await reserveBytes(env.DB, env.PEPPER, address, projectId, body.byteLength, now);
+    if (retryAfter !== null) return json({ error: 'daily_limit' }, 429, { 'Retry-After': String(retryAfter) });
+  } catch (e) {
+    console.error('byte budget failed', e);
+  }
+  return body;
 }
 
 function parseJson(bytes: Uint8Array): unknown {

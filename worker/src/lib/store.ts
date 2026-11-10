@@ -30,6 +30,53 @@ export async function countRequest(db: D1Database, pepper: string, address: stri
   return row?.count ?? 1;
 }
 
+// Daily byte budgets: the request bodies one client address may have stored in a UTC day, and the whole project
+// (the ingest is public, so one source could otherwise fill the database). Far above what an app sends (a batch is a few KB,
+// at most 512 KB), so a real install never meets them. Over a budget the request is answered 429 and nothing is stored.
+export const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAILY_BYTES_PER_ADDRESS = 10 * 1024 * 1024;
+export const DAILY_BYTES_PER_PROJECT = 100 * 1024 * 1024;
+
+// Adds `bytes` to a budget unless that passes `cap`: true when it fit (and is counted).
+async function reserve(db: D1Database, key: string, day: number, bytes: number, cap: number): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `INSERT INTO obs_budgets (key, day, bytes) VALUES (?1, ?2, ?3)
+       ON CONFLICT (key) DO UPDATE SET bytes = bytes + ?3 WHERE bytes + ?3 <= ?4
+       RETURNING bytes`,
+    )
+    .bind(key, day, bytes, cap)
+    .first();
+  return row !== null;
+}
+
+/**
+ * Counts a body of `bytes` against the budget of its client address and of its project for today. Returns the seconds until
+ * the budget renews (UTC midnight) when either is used up (nothing is counted then), otherwise null.
+ */
+export async function reserveBytes(
+  db: D1Database,
+  pepper: string,
+  address: string,
+  projectId: string,
+  bytes: number,
+  now: number,
+): Promise<number | null> {
+  const day = Math.floor(now / DAY_MS);
+  const [addressKey, projectKey] = await Promise.all([
+    hashId(pepper, 'bytes-address', `${address}:${day}`),
+    hashId(pepper, 'bytes-project', `${projectId}:${day}`),
+  ]);
+  const retryAfter = Math.max(1, Math.ceil(((day + 1) * DAY_MS - now) / 1000));
+  if (!(await reserve(db, addressKey, day, bytes, DAILY_BYTES_PER_ADDRESS))) return retryAfter;
+  if (!(await reserve(db, projectKey, day, bytes, DAILY_BYTES_PER_PROJECT))) {
+    // This address did not use the bytes: give them back.
+    await db.prepare('UPDATE obs_budgets SET bytes = MAX(bytes - ?2, 0) WHERE key = ?1').bind(addressKey, bytes).run();
+    return retryAfter;
+  }
+  return null;
+}
+
 // D1 allows 100 bound parameters per statement: a batch of rows goes in as several multi-row INSERTs.
 function insertRows(db: D1Database, table: string, columns: string[], rows: unknown[][]): D1PreparedStatement[] {
   const perStatement = Math.max(1, Math.floor(100 / columns.length));

@@ -90,7 +90,9 @@ but never forwarded, so Expo does not count it twice. Web diagnostics (`/web`) a
 ## Ingest rules
 
 1. Order of checks: project id (`404`), configuration (`503`), request rate per client address (`429` with `Retry-After`,
-   60 requests per minute), content type must be JSON (`415`), body at most 512 KiB (`413`).
+   60 requests per minute), content type must be JSON (`415`), body at most 512 KiB (`413`), daily bytes (`429
+   daily_limit` with `Retry-After` until UTC midnight, nothing stored): 10 MiB per client address and 100 MiB per project
+   and day.
 2. Collecting is best effort: a body that cannot be parsed, or a storage error, is logged and never changes the answer
    (`200 {"partialSuccess":{}}`). The web endpoint answers `400 invalid_body` for a malformed diagnostics envelope and `204`
    otherwise.
@@ -157,6 +159,13 @@ review what your app logs before pointing production traffic here.
   time it arrived.
 - The read API looks back at most 30 days, whatever `RETENTION_DAYS` is.
 - Rate limiting is per client address and minute (60 requests), so many apps behind one address share that budget.
+- The ingest is public, so it also keeps a daily byte budget (request bodies accepted, counted in `obs_budgets` by an HMAC of
+  the address and the day, never the address): 10 MiB per client address and 100 MiB per project. Over it the request is
+  answered `429 daily_limit` and nothing is stored or forwarded. The numbers are constants in `src/lib/store.ts`
+  (`DAILY_BYTES_PER_ADDRESS`, `DAILY_BYTES_PER_PROJECT`); they are far above what an app sends (a batch is a few KB), so
+  lower them if your traffic is small and the database matters, raise them for a large app behind few addresses. Run
+  `npm run db:migrate` after updating: the budgets need `0003_budgets.sql`. An address spoofed outside Cloudflare, or many
+  addresses, still gets past the per-address cap; the project cap holds either way.
 - D1 limits apply (bound parameters per statement, database size); rows are written in batches that respect them.
 - Not stored, therefore not shown (compared with Expo Observe): IP address, User-Agent, location, request URLs, update
   channel, runtime version and build number.
@@ -173,7 +182,7 @@ npm run typecheck   # tsc --noEmit
 Source layout: `src/routes/ingest.ts` (ingest, CORS, forwarding), `src/routes/api.ts` with `read-overview.ts` and
 `read-tabs.ts` (read API), `src/middleware/auth.ts` (bearer token), `src/lib/*` (OTLP and web parsing, scrubbing,
 fingerprints, storage, configuration, retention), `migrations/` (D1 schema: `0001_observe.sql` creates the tables,
-`0002_spans_indexes.sql` adds the span indexes for the Traces tab).
+`0002_spans_indexes.sql` adds the span indexes for the Traces tab, `0003_budgets.sql` the daily byte budgets).
 
 The tests send the attribute names that native `expo-observe` really uses (`test/fixtures.ts`), so a change that breaks
 compatibility with it fails them.

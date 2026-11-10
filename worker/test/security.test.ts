@@ -22,7 +22,7 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {},
   call(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': `192.0.2.${++ipSeq}`, ...headers }, body: JSON.stringify(body) }, over);
 
 beforeEach(async () => {
-  await db.batch(['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits'].map((t) => db.prepare(`DELETE FROM ${t}`)));
+  await db.batch(['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits', 'obs_budgets'].map((t) => db.prepare(`DELETE FROM ${t}`)));
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network is off in tests'); }));
 });
 afterEach(() => vi.unstubAllGlobals());

@@ -6,7 +6,7 @@ import { anyValue, nanosToMs } from '../src/lib/otlp';
 import { scrubRoute, scrubText } from '../src/lib/scrub';
 import { app } from '../src/index';
 import { MAX_BODY_BYTES } from '../src/routes/ingest';
-import { RATE_LIMIT_PER_WINDOW } from '../src/lib/store';
+import { DAILY_BYTES_PER_ADDRESS, DAILY_BYTES_PER_PROJECT, hashId, RATE_LIMIT_PER_WINDOW, reserveBytes } from '../src/lib/store';
 import { ADMIN_TOKEN, api, BASE, PROJECT_ID_1, PROJECT_ID_2 } from './helpers';
 import {
   b,
@@ -27,7 +27,7 @@ import {
 const PROJECT = PROJECT_ID_1;
 const db = env.DB;
 const DAY = 24 * 60 * 60 * 1000;
-const TABLES = ['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits'] as const;
+const TABLES = ['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits', 'obs_budgets'] as const;
 
 let ipSeq = 0;
 // Every request comes from its own address unless a test says otherwise: the rate limit is per address.
@@ -131,6 +131,91 @@ describe('observe ingest: limits', () => {
       expect(await res.json()).toEqual({ partialSuccess: {} });
     }
     expect(await count('obs_metrics')).toBe(0);
+  });
+});
+
+describe('observe ingest: daily byte budgets', () => {
+  const today = () => Math.floor(Date.now() / DAY);
+  const budgetKey = (domain: string, value: string) => hashId(env.PEPPER, domain, `${value}:${today()}`);
+  const setBudget = async (domain: string, value: string, bytes: number) =>
+    db.prepare('INSERT INTO obs_budgets (key, day, bytes) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET bytes = excluded.bytes').bind(await budgetKey(domain, value), today(), bytes).run();
+  const bytesOf = async (domain: string, value: string) =>
+    (await db.prepare('SELECT bytes FROM obs_budgets WHERE key = ?').bind(await budgetKey(domain, value)).first<{ bytes: number }>())?.bytes ?? null;
+  const batch = () => logsBatch([{ event: 'screen.view', at: Date.now(), attributes: [s('route', '/karta')] }]);
+
+  it('counts the stored bytes of an address and of the project', async () => {
+    const ip = '203.0.113.120';
+    const body = JSON.stringify(batch());
+    expect((await sendNative('logs', body, { ip })).status).toBe(200);
+    expect((await sendNative('logs', body + ' ', { ip })).status).toBe(200);
+    const n = new TextEncoder().encode(body).byteLength;
+    expect(await bytesOf('bytes-address', ip)).toBe(2 * n + 1);
+    expect(await bytesOf('bytes-project', PROJECT)).toBe(2 * n + 1);
+    expect(JSON.stringify(await rows('obs_budgets'))).not.toContain(ip);
+  });
+
+  it('answers 429 with the seconds until midnight and stores nothing once an address has used its day', async () => {
+    const ip = '203.0.113.121';
+    await setBudget('bytes-address', ip, DAILY_BYTES_PER_ADDRESS - 10);
+    const over = await sendNative('logs', batch(), { ip });
+    expect(over.status).toBe(429);
+    expect(await over.json()).toEqual({ error: 'daily_limit' });
+    const wait = Number(over.headers.get('Retry-After'));
+    expect(wait).toBeGreaterThanOrEqual(1);
+    expect(wait).toBeLessThanOrEqual(86_400);
+    expect(await count('obs_logs')).toBe(0);
+    expect(await count('obs_batches')).toBe(0);
+    expect((await sendWeb(webBatch([]), { ip })).status).toBe(429);
+    // the refused request counted nothing, and another address is not affected
+    expect(await bytesOf('bytes-address', ip)).toBe(DAILY_BYTES_PER_ADDRESS - 10);
+    expect((await sendNative('logs', batch(), { ip: '203.0.113.122' })).status).toBe(200);
+    expect(await count('obs_logs')).toBe(1);
+  });
+
+  it('stops every address once the project has used its day, and gives the address its bytes back', async () => {
+    await setBudget('bytes-project', PROJECT, DAILY_BYTES_PER_PROJECT - 10);
+    const ip = '203.0.113.123';
+    const over = await sendNative('logs', batch(), { ip });
+    expect(over.status).toBe(429);
+    expect(await count('obs_logs')).toBe(0);
+    expect(await bytesOf('bytes-address', ip)).toBe(0);
+    expect(await bytesOf('bytes-project', PROJECT)).toBe(DAILY_BYTES_PER_PROJECT - 10);
+  });
+
+  it('keeps the other limits: size (413) and request rate come first, and a refused request is not forwarded', async () => {
+    const ip = '203.0.113.124';
+    await setBudget('bytes-address', ip, DAILY_BYTES_PER_ADDRESS);
+    expect((await send('v1/logs', JSON.stringify({ pad: 'x'.repeat(MAX_BODY_BYTES) }), { ip })).status).toBe(413);
+    expect((await sendNative('logs', batch(), { ip, contentType: 'text/plain' })).status).toBe(415);
+    expect((await sendNative('logs', batch(), { ip })).status).toBe(429);
+    expect((await sendForwarded('logs', batch(), { ip })).status).toBe(429);
+    expect(fetchStub).not.toHaveBeenCalled();
+    // an accepted request is still forwarded as before
+    expoReply(200, '{"partialSuccess":{}}', { 'Content-Type': 'application/json' });
+    expect((await sendForwarded('logs', batch(), { ip: '203.0.113.125' })).status).toBe(200);
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+
+  it('a new UTC day starts at zero, and the cron deletes earlier days', async () => {
+    const now = Date.now();
+    const day = Math.floor(now / DAY);
+    expect(await reserveBytes(db, env.PEPPER, 'a', PROJECT, 100, now)).toBeNull();
+    expect(await reserveBytes(db, env.PEPPER, 'a', PROJECT, DAILY_BYTES_PER_ADDRESS, now)).toBeGreaterThan(0);
+    expect(await reserveBytes(db, env.PEPPER, 'a', PROJECT, DAILY_BYTES_PER_ADDRESS, now + DAY)).toBeNull();
+    await db.prepare(`INSERT INTO obs_budgets (key, day, bytes) VALUES ('yesterday', ?, 5)`).bind(day - 1).run();
+    await purgeTelemetry(env, now);
+    expect(await count('obs_budgets')).toBe(4); // today and tomorrow, address and project
+    expect((await db.prepare(`SELECT COUNT(*) AS n FROM obs_budgets WHERE key = 'yesterday'`).first<{ n: number }>())!.n).toBe(0);
+  });
+
+  it('never stops telemetry because the counter is broken', async () => {
+    await db.prepare('ALTER TABLE obs_budgets RENAME TO obs_budgets_off').run();
+    try {
+      expect((await sendNative('logs', batch())).status).toBe(200);
+      expect(await count('obs_logs')).toBe(1);
+    } finally {
+      await db.prepare('ALTER TABLE obs_budgets_off RENAME TO obs_budgets').run();
+    }
   });
 });
 

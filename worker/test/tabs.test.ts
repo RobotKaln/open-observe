@@ -9,7 +9,7 @@ import { jsException, logsBatch, metricsBatch, resource, s, tracesBatch, webBatc
 const PROJECT = PROJECT_ID_1;
 const db = env.DB;
 const DAY = 24 * 60 * 60 * 1000;
-const TABLES = ['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits'] as const;
+const TABLES = ['obs_batches', 'obs_metrics', 'obs_logs', 'obs_spans', 'obs_limits', 'obs_budgets'] as const;
 
 let ipSeq = 0;
 const send = (path: string, body: unknown) =>
